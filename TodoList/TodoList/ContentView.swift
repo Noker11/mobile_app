@@ -33,8 +33,18 @@ struct ContentView: View {
                     }
                     .listStyle(.plain)
                     .refreshable {
-                        await store.refresh()
+                        await store.sync()
                     }
+                }
+
+                if store.isOffline {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wifi.slash")
+                        Text("Offline – zmeny sa uložia lokálne a odošlú po pripojení")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal)
                 }
 
                 HStack {
