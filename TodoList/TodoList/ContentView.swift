@@ -7,27 +7,35 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack {
-                List {
-                    ForEach(store.items) { item in
-                        HStack {
-                            Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(item.isDone ? .green : .secondary)
-                                .onTapGesture {
-                                    store.toggle(item)
-                                }
-                            Text(item.title)
-                                .strikethrough(item.isDone)
-                                .foregroundStyle(item.isDone ? .secondary : .primary)
+                if store.isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List {
+                        ForEach(store.items) { item in
+                            HStack {
+                                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(item.isDone ? .green : .secondary)
+                                    .onTapGesture {
+                                        store.toggle(item)
+                                    }
+                                Text(item.title)
+                                    .strikethrough(item.isDone)
+                                    .foregroundStyle(item.isDone ? .secondary : .primary)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                store.toggle(item)
+                            }
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            store.toggle(item)
-                        }
+                        .onDelete(perform: store.delete)
+                        .onMove(perform: store.move)
                     }
-                    .onDelete(perform: store.delete)
-                    .onMove(perform: store.move)
+                    .listStyle(.plain)
+                    .refreshable {
+                        await store.refresh()
+                    }
                 }
-                .listStyle(.plain)
 
                 HStack {
                     TextField("Nová úloha", text: $newTitle)
@@ -57,6 +65,14 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
+            }
+            .alert("Chyba", isPresented: Binding(
+                get: { store.errorMessage != nil },
+                set: { isPresented in if !isPresented { store.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(store.errorMessage ?? "")
             }
         }
     }
