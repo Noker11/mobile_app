@@ -54,12 +54,23 @@ final class TodoListStore: ObservableObject {
     /// Replays any queued offline edits against the server, then refreshes
     /// from the server's current state. Safe to call whenever connectivity
     /// is (re)gained, on launch, and periodically as a backstop.
+    ///
+    /// What's in the app always wins over what's on the server: the server
+    /// snapshot is only pulled in once every locally queued edit has been
+    /// pushed. If any edit is still stuck in the queue (partial failure
+    /// mid-flush), a stale server list is never allowed to overwrite it.
     func sync() async {
         guard network.isConnected else {
             isLoading = false
             return
         }
         await flushPendingOperations()
+        guard pendingOperations.isEmpty else {
+            serverReachable = false
+            updateOfflineState()
+            isLoading = false
+            return
+        }
         do {
             items = try await APIClient.listTasks().sorted { $0.order < $1.order }
             LocalStore.saveItems(items)
