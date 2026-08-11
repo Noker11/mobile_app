@@ -1,54 +1,88 @@
 import Foundation
-import Combine
 
 @MainActor
 final class TodoListStore: ObservableObject {
     @Published private(set) var items: [TodoItem] = []
-
-    private let storageURL: URL
+    @Published var isLoading = true
+    @Published var errorMessage: String?
 
     init() {
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        storageURL = directory.appendingPathComponent("todos.json")
-        load()
+        Task { await refresh() }
+    }
+
+    func refresh() async {
+        do {
+            items = try await APIClient.listTasks().sorted { $0.order < $1.order }
+        } catch {
+            errorMessage = "Nepodarilo sa načítať úlohy zo servera."
+        }
+        isLoading = false
     }
 
     func add(title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        items.append(TodoItem(title: trimmed))
-        save()
+        Task {
+            do {
+                let created = try await APIClient.createTask(title: trimmed)
+                items.append(created)
+            } catch {
+                errorMessage = "Nepodarilo sa pridať úlohu."
+            }
+        }
     }
 
     func toggle(_ item: TodoItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[index].isDone.toggle()
-        save()
+        let newValue = !items[index].isDone
+        items[index].isDone = newValue
+        Task {
+            do {
+                _ = try await APIClient.updateTask(id: item.id, completed: newValue)
+            } catch {
+                items[index].isDone.toggle()
+                errorMessage = "Nepodarilo sa uložiť zmenu."
+            }
+        }
     }
 
     func delete(at offsets: IndexSet) {
+        let toDelete = offsets.map { items[$0] }
         items.remove(atOffsets: offsets)
-        save()
+        Task {
+            for item in toDelete {
+                do {
+                    try await APIClient.deleteTask(id: item.id)
+                } catch {
+                    errorMessage = "Nepodarilo sa zmazať úlohu."
+                }
+            }
+        }
     }
 
     func deleteCheckedItems() {
+        let toDelete = items.filter { $0.isDone }
         items.removeAll { $0.isDone }
-        save()
+        Task {
+            for item in toDelete {
+                do {
+                    try await APIClient.deleteTask(id: item.id)
+                } catch {
+                    errorMessage = "Nepodarilo sa zmazať úlohy."
+                }
+            }
+        }
     }
 
     func move(from source: IndexSet, to destination: Int) {
         items.move(fromOffsets: source, toOffset: destination)
-        save()
-    }
-
-    private func load() {
-        guard let data = try? Data(contentsOf: storageURL),
-              let decoded = try? JSONDecoder().decode([TodoItem].self, from: data) else { return }
-        items = decoded
-    }
-
-    private func save() {
-        guard let data = try? JSONEncoder().encode(items) else { return }
-        try? data.write(to: storageURL, options: .atomic)
+        let ids = items.map { $0.id }
+        Task {
+            do {
+                try await APIClient.reorderTasks(ids: ids)
+            } catch {
+                errorMessage = "Nepodarilo sa uložiť poradie."
+            }
+        }
     }
 }

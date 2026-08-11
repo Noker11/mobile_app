@@ -1,13 +1,14 @@
 import Foundation
 
 struct TodoItem: Identifiable, Codable, Equatable {
-    let id: UUID
+    let id: Int
     var title: String
+    var description: String?
     var isDone: Bool
+    var order: Int
 
-    init(id: UUID = UUID(), title: String, isDone: Bool = false) {
-        self.id = id
-        self.title = title
-        self.isDone = isDone
+    enum CodingKeys: String, CodingKey {
+        case id, title, description, order
+        case isDone = "completed"
     }
 }
